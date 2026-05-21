@@ -26,6 +26,7 @@ async function run() {
     await client.connect();
     const db = client.db("petGhor");
     const petCollections = db.collection("allPets");
+
     app.get("/all-pets", async (req, res) => {
       const species = req.query.species;
       const search = req.query.search;
@@ -78,7 +79,22 @@ async function run() {
         data: result,
       });
     });
+    app.get("/dashboard/my-listings", async (req, res) => {
+      const email = req.query.email;
+      console.log(email)
+      if (!email) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Email required" });
+      }
 
+      const myPets = await petCollections.find({ ownerEmail: email }).toArray();
+      
+      res.json({
+        success: true,
+        data: myPets,
+      });
+    });
     app.listen(port, () => {
       console.log(`Server is running of ${port}`);
     });
