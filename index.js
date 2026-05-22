@@ -95,7 +95,6 @@ async function run() {
       });
     });
     app.post("/dashboard/my-request", async (req, res) => {
-
       const { ownerEmail, petId, requesterEmail } = req.body;
       // const petId = new ObjectId(req.body.petId);
       const existing = await adoptionsCollection.findOne({
@@ -103,6 +102,13 @@ async function run() {
         requesterEmail,
       });
       // console.log(req.body)
+      const IsAdopted = await petCollections.findOne({
+        _id: new ObjectId(petId),
+        status: "adopted"
+      })
+      if(IsAdopted){
+        return res.status(400).json({ success: false, message: "This pet is already adopted" });
+      }
       if (ownerEmail === requesterEmail) {
         return res
           .status(400)
@@ -113,8 +119,8 @@ async function run() {
       }
       if (existing) {
         return res
-          .status(400)
-          .json({ success: false, message: "Already requested for this pet" });
+         .status(400)
+         .json({ success: false, message: "Already requested for this pet" });
       }
       const result = await adoptionsCollection.insertOne(req.body);
       res.json({ success: true, data: result });
@@ -127,6 +133,45 @@ async function run() {
 
       res.json({ success: true, data: requests });
     });
+    app.patch("/adoptions/approve", async (req,res)=>{
+      const { petId, requestId } = req.body;
+      const IsRejected = await adoptionsCollection.findOne({
+        _id: new ObjectId(requestId),
+        status: "rejected"
+      })
+      if(IsRejected){
+        return res.status(400).json({ success: false, message: "You can't approve a rejected request" });
+      }
+      await adoptionsCollection.updateOne(
+        { _id: new ObjectId(requestId) },
+        { $set: { status: "approved" } }
+      );
+      await adoptionsCollection.updateMany(
+        // { petId: new ObjectId(petId) },
+        {petId, _id: { $ne: new ObjectId(requestId) } },
+        { $set: { status: "rejected" } }
+      );
+      await petCollections.updateOne(
+        { _id: new ObjectId(petId) },
+        { $set: { status: "adopted" } }
+      );
+      res.json({ success: true, message: "Adoption approved" });
+    })
+    app.patch("/adoptions/reject", async (req, res)=>{
+      const { requestId } = req.body;
+      const IsApproved = await adoptionsCollection.findOne({
+        _id: new ObjectId(requestId),
+        status: "approved"
+      })
+      if(IsApproved){
+        return res.status(400).json({ success: false, message: "You can't reject an approved request" });
+      }
+      await adoptionsCollection.updateOne(
+        { _id: new ObjectId(requestId) },
+        { $set: { status: "rejected" } }
+      );
+      res.json({ success: true, message: "Adoption rejected" });
+    })
     app.listen(port, () => {
       console.log(`Server is running on ${port}`);
     });
