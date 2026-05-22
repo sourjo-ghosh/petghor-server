@@ -172,6 +172,21 @@ async function run() {
       );
       res.json({ success: true, message: "Adoption rejected" });
     })
+    app.get("/dashboard/my-requests", async (req, res) => {
+      const email = req.query.email;
+      if (!email) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Email required" });
+      }
+      const pendingList  = await adoptionsCollection.find({ requesterEmail: email, status: "pending" }).toArray();
+      const approvedList = await adoptionsCollection.find({ requesterEmail: email, status: "approved" }).toArray();
+      const rejectedList = await adoptionsCollection.find({ requesterEmail: email, status: "rejected" }).toArray();
+      const myRequests = await adoptionsCollection.find(
+        {requesterEmail: email }
+      ).toArray();
+      res.json({ success: true, data: { pendingList, approvedList, rejectedList, myRequests } });
+    })
     app.listen(port, () => {
       console.log(`Server is running on ${port}`);
     });
