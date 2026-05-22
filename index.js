@@ -1,4 +1,4 @@
-require("dotenv").config(); // ← সবার আগে এই line
+require("dotenv").config(); 
 const express = require("express");
 const app = express();
 const cors = require("cors");
@@ -26,6 +26,7 @@ async function run() {
     await client.connect();
     const db = client.db("petGhor");
     const petCollections = db.collection("allPets");
+    const adoptionsCollection = db.collection("adoptions");
 
     app.get("/all-pets", async (req, res) => {
       const species = req.query.species;
@@ -54,7 +55,6 @@ async function run() {
         data: allPets,
       });
     });
-
     app.get("/all-pets/:id", async (req, res) => {
       const id = req.params.id;
       // console.log(id)
@@ -68,7 +68,6 @@ async function run() {
         data: SinglePet,
       });
     });
-
     app.post("/add-pet", async (req, res) => {
       // const db = client.db("petghor");
       const result = await petCollections.insertOne(req.body);
@@ -81,7 +80,7 @@ async function run() {
     });
     app.get("/dashboard/my-listings", async (req, res) => {
       const email = req.query.email;
-      console.log(email)
+      console.log(email);
       if (!email) {
         return res
           .status(400)
@@ -89,14 +88,47 @@ async function run() {
       }
 
       const myPets = await petCollections.find({ ownerEmail: email }).toArray();
-      
+
       res.json({
         success: true,
         data: myPets,
       });
     });
+    app.post("/dashboard/my-request", async (req, res) => {
+
+      const { ownerEmail, petId, requesterEmail } = req.body;
+      // const petId = new ObjectId(req.body.petId);
+      const existing = await adoptionsCollection.findOne({
+        petId,
+        requesterEmail,
+      });
+      // console.log(req.body)
+      if (ownerEmail === requesterEmail) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "You can't request for your own pet",
+          });
+      }
+      if (existing) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Already requested for this pet" });
+      }
+      const result = await adoptionsCollection.insertOne(req.body);
+      res.json({ success: true, data: result });
+    });
+    app.get("/adoptions/pet-requests", async (req, res) => {
+      const { petId } = req.query;
+      // const Id = new ObjectId(petId);
+      console.log(petId)
+      const requests = await adoptionsCollection.find({ petId }).toArray();
+
+      res.json({ success: true, data: requests });
+    });
     app.listen(port, () => {
-      console.log(`Server is running of ${port}`);
+      console.log(`Server is running on ${port}`);
     });
   } finally {
     // Ensures that the client will close when you finish/error
