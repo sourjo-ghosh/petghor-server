@@ -7,6 +7,7 @@ const { MongoClient, ServerApiVersion, Db, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
 const dns = require("node:dns");
 const { connect } = require("node:http2");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 app.use(cors());
 app.use(express.json());
@@ -20,6 +21,28 @@ const client = new MongoClient(uri, {
   },
 });
 
+
+const JWKS = createRemoteJWKSet(
+  new URL("http://localhost:3000/api/auth/jwks")
+)
+const verifyToken = async (req, res, next)=>{
+  const tokenValue = req?.headers?.authorization;
+  if(!tokenValue){
+    return res.status(401).json({success: false, message: "Unauthorized"})
+  }
+  const token = tokenValue?.split(" ")[1];
+  if(!token){
+    return res.status(401).json({success: false, message: "Unauthorized"})
+  }
+  try {
+    const {payload} = await jwtVerify(token, JWKS, {
+    })
+    
+    next();
+  } catch (error) {
+    return res.status(401).json({success: false, message: "Unauthorized"})
+  }
+}
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -55,7 +78,9 @@ async function run() {
         data: allPets,
       });
     });
-    app.get("/all-pets/:id", async (req, res) => {
+    app.get("/all-pets/:id", verifyToken, async (req, res) => {
+      const token = req?.headers?.authorization;
+      // console.log(token)
       const id = req.params.id;
       // console.log(id)
       const query = {
@@ -68,7 +93,7 @@ async function run() {
         data: SinglePet,
       });
     });
-    app.post("/add-pet", async (req, res) => {
+    app.post("/add-pet", verifyToken, async (req, res) => {
       // const db = client.db("petghor");
       const result = await petCollections.insertOne(req.body);
       // res.send(result);
@@ -78,7 +103,7 @@ async function run() {
         data: result,
       });
     });
-    app.get("/dashboard/my-listings", async (req, res) => {
+    app.get("/dashboard/my-listings", verifyToken, async (req, res) => {
       const email = req.query.email;
       if (!email) {
         return res
@@ -98,7 +123,7 @@ async function run() {
         data: { myPets, totalList, adoptedList, availableList },
       });
     });
-    app.post("/dashboard/my-request", async (req, res) => {
+    app.post("/dashboard/my-request", verifyToken, async (req, res) => {
       const { ownerEmail, petId, requesterEmail } = req.body;
       // const petId = new ObjectId(req.body.petId);
       const existing = await adoptionsCollection.findOne({
@@ -129,7 +154,7 @@ async function run() {
       const result = await adoptionsCollection.insertOne(req.body);
       res.json({ success: true, data: result });
     });
-    app.get("/adoptions/pet-requests", async (req, res) => {
+    app.get("/adoptions/pet-requests", verifyToken, async (req, res) => {
       const { petId } = req.query;
       // const Id = new ObjectId(petId);
       // console.log(petId);
@@ -137,7 +162,7 @@ async function run() {
 
       res.json({ success: true, data: requests });
     });
-    app.patch("/adoptions/approve", async (req, res) => {
+    app.patch("/adoptions/approve", verifyToken, async (req, res) => {
       const { petId, requestId } = req.body;
       const IsRejected = await adoptionsCollection.findOne({
         _id: new ObjectId(requestId),
@@ -164,7 +189,7 @@ async function run() {
       );
       res.json({ success: true, message: "Adoption approved" });
     });
-    app.patch("/adoptions/reject", async (req, res) => {
+    app.patch("/adoptions/reject", verifyToken, async (req, res) => {
       const { requestId } = req.body;
       const IsApproved = await adoptionsCollection.findOne({
         _id: new ObjectId(requestId),
@@ -182,7 +207,7 @@ async function run() {
       );
       res.json({ success: true, message: "Adoption rejected" });
     });
-    app.get("/dashboard/my-requests", async (req, res) => {
+    app.get("/dashboard/my-requests", verifyToken, async (req, res) => {
       const email = req.query.email;
       if (!email) {
         return res
@@ -206,7 +231,7 @@ async function run() {
         data: { pendingList, approvedList, rejectedList, myRequests },
       });
     });
-    app.delete("/dashboard/delete-pet/:id", async (req, res) => {
+    app.delete("/dashboard/delete-pet/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const OwnerEmail = req.body.petOwnerEmail;
       const petOwner = await petCollections.findOne({
@@ -225,7 +250,7 @@ async function run() {
       await adoptionsCollection.deleteMany({ petId: id });
       res.json({ success: true, message: "Pet deleted successfully" });
     });
-    app.patch("/dashboard/update-pet/:id", async (req, res) => {
+    app.patch("/dashboard/update-pet/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const OwnerEmail = req.body.petOwnerEmail;
       const petOwner = await petCollections.findOne({
@@ -256,7 +281,7 @@ async function run() {
       );
       res.json({ success: true, message: "Pet updated successfully" });
     });
-    app.delete("/dashboard/delete-request/:id", async (req, res) => {
+    app.delete("/dashboard/delete-request/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const requesterEmail = req.body.requesterEmail;
       const petRequester = await adoptionsCollection.findOne({
