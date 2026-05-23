@@ -1,4 +1,4 @@
-require("dotenv").config(); 
+require("dotenv").config();
 const express = require("express");
 const app = express();
 const cors = require("cors");
@@ -80,18 +80,22 @@ async function run() {
     });
     app.get("/dashboard/my-listings", async (req, res) => {
       const email = req.query.email;
-      console.log(email);
       if (!email) {
         return res
           .status(400)
           .json({ success: false, message: "Email required" });
       }
-
+      const totalList = await petCollections
+        .find({ ownerEmail: email })
+        .toArray();
+      const adoptedList = await petCollections
+        .find({ ownerEmail: email, status: "adopted" })
+        .toArray();
+      const availableList = totalList.length - adoptedList.length;
       const myPets = await petCollections.find({ ownerEmail: email }).toArray();
-
       res.json({
         success: true,
-        data: myPets,
+        data: { myPets, totalList, adoptedList, availableList },
       });
     });
     app.post("/dashboard/my-request", async (req, res) => {
@@ -104,23 +108,23 @@ async function run() {
       // console.log(req.body)
       const IsAdopted = await petCollections.findOne({
         _id: new ObjectId(petId),
-        status: "adopted"
-      })
-      if(IsAdopted){
-        return res.status(400).json({ success: false, message: "This pet is already adopted" });
-      }
-      if (ownerEmail === requesterEmail) {
+        status: "adopted",
+      });
+      if (IsAdopted) {
         return res
           .status(400)
-          .json({
-            success: false,
-            message: "You can't request for your own pet",
-          });
+          .json({ success: false, message: "This pet is already adopted" });
+      }
+      if (ownerEmail === requesterEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "You can't request for your own pet",
+        });
       }
       if (existing) {
         return res
-         .status(400)
-         .json({ success: false, message: "Already requested for this pet" });
+          .status(400)
+          .json({ success: false, message: "Already requested for this pet" });
       }
       const result = await adoptionsCollection.insertOne(req.body);
       res.json({ success: true, data: result });
@@ -128,50 +132,56 @@ async function run() {
     app.get("/adoptions/pet-requests", async (req, res) => {
       const { petId } = req.query;
       // const Id = new ObjectId(petId);
-      console.log(petId)
+      // console.log(petId);
       const requests = await adoptionsCollection.find({ petId }).toArray();
 
       res.json({ success: true, data: requests });
     });
-    app.patch("/adoptions/approve", async (req,res)=>{
+    app.patch("/adoptions/approve", async (req, res) => {
       const { petId, requestId } = req.body;
       const IsRejected = await adoptionsCollection.findOne({
         _id: new ObjectId(requestId),
-        status: "rejected"
-      })
-      if(IsRejected){
-        return res.status(400).json({ success: false, message: "You can't approve a rejected request" });
+        status: "rejected",
+      });
+      if (IsRejected) {
+        return res.status(400).json({
+          success: false,
+          message: "You can't approve a rejected request",
+        });
       }
       await adoptionsCollection.updateOne(
         { _id: new ObjectId(requestId) },
-        { $set: { status: "approved" } }
+        { $set: { status: "approved" } },
       );
       await adoptionsCollection.updateMany(
         // { petId: new ObjectId(petId) },
-        {petId, _id: { $ne: new ObjectId(requestId) } },
-        { $set: { status: "rejected" } }
+        { petId, _id: { $ne: new ObjectId(requestId) } },
+        { $set: { status: "rejected" } },
       );
       await petCollections.updateOne(
         { _id: new ObjectId(petId) },
-        { $set: { status: "adopted" } }
+        { $set: { status: "adopted" } },
       );
       res.json({ success: true, message: "Adoption approved" });
-    })
-    app.patch("/adoptions/reject", async (req, res)=>{
+    });
+    app.patch("/adoptions/reject", async (req, res) => {
       const { requestId } = req.body;
       const IsApproved = await adoptionsCollection.findOne({
         _id: new ObjectId(requestId),
-        status: "approved"
-      })
-      if(IsApproved){
-        return res.status(400).json({ success: false, message: "You can't reject an approved request" });
+        status: "approved",
+      });
+      if (IsApproved) {
+        return res.status(400).json({
+          success: false,
+          message: "You can't reject an approved request",
+        });
       }
       await adoptionsCollection.updateOne(
         { _id: new ObjectId(requestId) },
-        { $set: { status: "rejected" } }
+        { $set: { status: "rejected" } },
       );
       res.json({ success: true, message: "Adoption rejected" });
-    })
+    });
     app.get("/dashboard/my-requests", async (req, res) => {
       const email = req.query.email;
       if (!email) {
@@ -179,14 +189,94 @@ async function run() {
           .status(400)
           .json({ success: false, message: "Email required" });
       }
-      const pendingList  = await adoptionsCollection.find({ requesterEmail: email, status: "pending" }).toArray();
-      const approvedList = await adoptionsCollection.find({ requesterEmail: email, status: "approved" }).toArray();
-      const rejectedList = await adoptionsCollection.find({ requesterEmail: email, status: "rejected" }).toArray();
-      const myRequests = await adoptionsCollection.find(
-        {requesterEmail: email }
-      ).toArray();
-      res.json({ success: true, data: { pendingList, approvedList, rejectedList, myRequests } });
-    })
+      const pendingList = await adoptionsCollection
+        .find({ requesterEmail: email, status: "pending" })
+        .toArray();
+      const approvedList = await adoptionsCollection
+        .find({ requesterEmail: email, status: "approved" })
+        .toArray();
+      const rejectedList = await adoptionsCollection
+        .find({ requesterEmail: email, status: "rejected" })
+        .toArray();
+      const myRequests = await adoptionsCollection
+        .find({ requesterEmail: email })
+        .toArray();
+      res.json({
+        success: true,
+        data: { pendingList, approvedList, rejectedList, myRequests },
+      });
+    });
+    app.delete("/dashboard/delete-pet/:id", async (req, res) => {
+      const id = req.params.id;
+      const OwnerEmail = req.body.petOwnerEmail;
+      const petOwner = await petCollections.findOne({
+        _id: new ObjectId(id),
+        ownerEmail: OwnerEmail,
+      });
+      if (!petOwner) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "You are not the owner of this pet",
+          });
+      }
+      await petCollections.deleteOne({ _id: new ObjectId(id) });
+      await adoptionsCollection.deleteMany({ petId: id });
+      res.json({ success: true, message: "Pet deleted successfully" });
+    });
+    app.patch("/dashboard/update-pet/:id", async (req, res) => {
+      const id = req.params.id;
+      const OwnerEmail = req.body.petOwnerEmail;
+      const petOwner = await petCollections.findOne({
+        _id: new ObjectId(id),
+        ownerEmail: OwnerEmail,
+      });
+      const isAdopted = await petCollections.findOne({
+        _id: new ObjectId(id),
+        status: "adopted",
+      });
+      if (isAdopted) {
+        return res
+          .status(400)
+          .json({ success: false, message: "You can't update an adopted pet" });
+      }
+      if (!petOwner) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "You are not the owner of this pet",
+          });
+      }
+      const updatedData = req.body;
+      await petCollections.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updatedData },
+      );
+      res.json({ success: true, message: "Pet updated successfully" });
+    });
+    app.delete("/dashboard/delete-request/:id", async (req, res) => {
+      const id = req.params.id;
+      const requesterEmail = req.body.requesterEmail;
+      const petRequester = await adoptionsCollection.findOne({
+        _id: new ObjectId(id),
+        requesterEmail,
+      });
+      if (!petRequester) {
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "You are not the requester of this adoption request",
+          });
+      }
+      const request = await adoptionsCollection.deleteOne({
+        _id: new ObjectId(id),
+        requesterEmail,
+      });
+      res.json({ success: true, message: "Adoption request deleted successfully" });
+    });
     app.listen(port, () => {
       console.log(`Server is running on ${port}`);
     });
