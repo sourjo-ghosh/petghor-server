@@ -21,28 +21,26 @@ const client = new MongoClient(uri, {
   },
 });
 
-
 const JWKS = createRemoteJWKSet(
-  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
-)
-const verifyToken = async (req, res, next)=>{
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`),
+);
+const verifyToken = async (req, res, next) => {
   const tokenValue = req?.headers?.authorization;
-  if(!tokenValue){
-    return res.status(401).json({success: false, message: "Unauthorized"})
+  if (!tokenValue) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
   }
   const token = tokenValue?.split(" ")[1];
-  if(!token){
-    return res.status(401).json({success: false, message: "Unauthorized"})
+  if (!token) {
+    return res.status(401).json({ success: false, message: "Unauthorized" });
   }
   try {
-    const {payload} = await jwtVerify(token, JWKS, {
-    })
-    
+    const { payload } = await jwtVerify(token, JWKS, {});
+
     next();
   } catch (error) {
-    return res.status(401).json({success: false, message: "Unauthorized"})
+    return res.status(401).json({ success: false, message: "Unauthorized" });
   }
-}
+};
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -239,12 +237,10 @@ async function run() {
         ownerEmail: OwnerEmail,
       });
       if (!petOwner) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "You are not the owner of this pet",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "You are not the owner of this pet",
+        });
       }
       await petCollections.deleteOne({ _id: new ObjectId(id) });
       await adoptionsCollection.deleteMany({ petId: id });
@@ -267,12 +263,10 @@ async function run() {
           .json({ success: false, message: "You can't update an adopted pet" });
       }
       if (!petOwner) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: "You are not the owner of this pet",
-          });
+        return res.status(400).json({
+          success: false,
+          message: "You are not the owner of this pet",
+        });
       }
       const updatedData = req.body;
       await petCollections.updateOne(
@@ -281,27 +275,32 @@ async function run() {
       );
       res.json({ success: true, message: "Pet updated successfully" });
     });
-    app.delete("/dashboard/delete-request/:id", verifyToken, async (req, res) => {
-      const id = req.params.id;
-      const requesterEmail = req.body.requesterEmail;
-      const petRequester = await adoptionsCollection.findOne({
-        _id: new ObjectId(id),
-        requesterEmail,
-      });
-      if (!petRequester) {
-        return res
-          .status(400)
-          .json({
+    app.delete(
+      "/dashboard/delete-request/:id",
+      verifyToken,
+      async (req, res) => {
+        const id = req.params.id;
+        const requesterEmail = req.body.requesterEmail;
+        const petRequester = await adoptionsCollection.findOne({
+          _id: new ObjectId(id),
+          requesterEmail,
+        });
+        if (!petRequester) {
+          return res.status(400).json({
             success: false,
             message: "You are not the requester of this adoption request",
           });
-      }
-      const request = await adoptionsCollection.deleteOne({
-        _id: new ObjectId(id),
-        requesterEmail,
-      });
-      res.json({ success: true, message: "Adoption request deleted successfully" });
-    });
+        }
+        const request = await adoptionsCollection.deleteOne({
+          _id: new ObjectId(id),
+          requesterEmail,
+        });
+        res.json({
+          success: true,
+          message: "Adoption request deleted successfully",
+        });
+      },
+    );
     app.listen(port, () => {
       console.log(`Server is running on ${port}`);
     });
@@ -313,5 +312,5 @@ async function run() {
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send("hello world");
+  res.send("Fuck You");
 });
